@@ -1,8 +1,7 @@
 # SilvermoonStimming
 Track and Display laps around Sanctum of Light in Silvermoon (Midnight)
 
-!> [!WARNING]
-> Work-in-Progress expect breaking changes!!
+**Work-in-Progress expect breaking changes!!**
 
 --- 
 
