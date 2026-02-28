@@ -5,6 +5,11 @@
 ## Version: 1.0.0
 ## SavedVariables: SilvermoonStimmingDB 
 
+## X-License: Licensed under the MIT License. See the LICENSE file in the project root for details.
+## X-Website: https://github.com/Jeremy-Gstein/SilvermoonStimming
+## X-Curse-Project-ID: 1446760
+
+
 Locales/enUS.lua
 
 SilvermoonStimming_Config.lua
