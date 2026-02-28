@@ -1,10 +1,12 @@
 ## Interface: 120000, 120001
 ## Title: SilvermoonStimming
-## Notes: Simple addon that Tracks laps around Sanctum of Light in Silvermoon.
+## Notes: a simple Midnight addon to Tracks laps around Sanctum of Light in Silvermoon.
 ## Author: Jeremy-Gstein
-## Version: 1.0.0
+## Version: 0.1.0
 ## SavedVariables: SilvermoonStimmingDB 
 
-Config.lua
-Core.lua
-UI.lua
+Locales/enUS.lua
+
+SilvermoonStimming_Config.lua
+SilvermoonStimming_Core.lua
+SilvermoonStimming_UI.lua

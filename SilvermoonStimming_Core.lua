@@ -16,6 +16,7 @@
 -- ============================================================
 
 local CFG    = SilvermoonStimmingConfig
+local L      = SilvermoonStimmingL
 local TWO_PI = math.pi * 2
 
 -- Saved-variable defaults
@@ -29,6 +30,18 @@ SilvermoonStimmingCore = {}
 
 -- Runtime state
 local W_ticker         = nil
+local inSilvermoon     = false
+local Tick             -- forward declaration so StartTicker can reference it before definition   -- tracked so movement events know if they should act
+
+local function StartTicker()
+    if inSilvermoon and not W_ticker then
+        W_ticker = C_Timer.NewTicker(CFG.POLL_RATE, Tick)
+    end
+end
+
+local function StopTicker()
+    if W_ticker then W_ticker:Cancel() ; W_ticker = nil end
+end
 local state            = "OFF_TRACK"
 local previousAngle    = nil
 local accumulatedAngle = 0
@@ -85,7 +98,7 @@ local function EnterTrack(x, y)
     previousAngle = math.atan2(y - CFG.CENTER.y, x - CFG.CENTER.x)
     if lapStartTime == nil then lapStartTime = GetTime() end
     SilvermoonStimmingUI.OnStateChange(state)
-    print("|cff00ff7fSilvermoonStimming:|r On track.")
+    print(L["ON_TRACK"])
 end
 
 local function EnterCenter()
@@ -97,7 +110,7 @@ end
 local function LeaveTrack()
     state = "OFF_TRACK"
     SilvermoonStimmingUI.OnStateChange(state)
-    print("|cff00ff7fSilvermoonStimming:|r Left track.")
+    print(L["LEFT_TRACK"])
 end
 
 -- ── Lap counting ──────────────────────────────────────────────────────────────
@@ -108,7 +121,7 @@ local function CheckLap()
 
     local elapsed = lapStartTime and (GetTime() - lapStartTime) or 999
     if elapsed < CFG.MIN_LAP_SECONDS then
-        print("|cffff4444SilvermoonStimming:|r Lap too fast (" .. string.format("%.1f", elapsed) .. "s) -- ignored.")
+        print(string.format(L["LAP_TOO_FAST"], elapsed))
         ResetRunState()
         return
     end
@@ -122,11 +135,8 @@ local function CheckLap()
         SilvermoonStimmingDB.bestLapSeconds = elapsed
     end
 
-    local dirLabel = (direction == CFG.DIR_CW) and "|cff00ccff->  CW|r" or "|cffff9900<- CCW|r"
-    print(string.format(
-        "|cff00ff7fSilvermoonStimming:|r Lap |cffffff00#%d|r  %s  Time: |cffffff00%.1fs|r",
-        SilvermoonStimmingDB.totalLaps, dirLabel, elapsed
-    ))
+    local dirLabel = (direction == CFG.DIR_CW) and L["DIR_CW"] or L["DIR_CCW"]
+    print(string.format(L["LAP_COMPLETE"], SilvermoonStimmingDB.totalLaps, dirLabel, elapsed))
 
     lapStartTime = GetTime()
     SilvermoonStimmingUI.OnLapComplete(SilvermoonStimmingDB)
@@ -134,7 +144,7 @@ end
 
 -- ── Main tick ─────────────────────────────────────────────────────────────────
 
-local function Tick()
+Tick = function()
     local x, y = GetPlayerPos()
 
     if not x then
@@ -177,7 +187,7 @@ local function Tick()
 
     -- Direction reversal: zero out accumulated angle for a clean slate
     if newDir ~= CFG.DIR_NONE and newDir ~= direction and direction ~= CFG.DIR_NONE then
-        print("|cff00ff7fSilvermoonStimming:|r Direction reversed.")
+        print(L["DIR_REVERSED"])
         ResetRunState()
         previousAngle = current
         direction     = newDir
@@ -212,6 +222,9 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 frame:RegisterEvent("ZONE_CHANGED")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("PLAYER_STARTED_MOVING")
+frame:RegisterEvent("PLAYER_STOPPED_MOVING")
+frame:RegisterEvent("PLAYER_MOUNT_DISPLAY_CHANGED")
 
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == "SilvermoonStimming" then
@@ -221,9 +234,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
         SilvermoonStimmingDB.sessionLaps = 0
 
-        W_ticker = C_Timer.NewTicker(CFG.POLL_RATE, Tick)
         SilvermoonStimmingUI.Init(SilvermoonStimmingDB)
-        print("|cff00ff7fSilvermoonStimming|r loaded.  |cff888888/lt for commands|r")
+        print(L["LOADED"])
 
     elseif event == "ZONE_CHANGED_NEW_AREA"
         or event == "ZONE_CHANGED"
@@ -232,17 +244,25 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- Small delay so map data is ready after zone transition
         C_Timer.After(1.0, function()
             if IsInSilvermoon() then
-                if not W_ticker then
-                    W_ticker = C_Timer.NewTicker(CFG.POLL_RATE, Tick)
-                end
+                inSilvermoon = true
+                -- Ticker starts on PLAYER_STARTED_MOVING, not here
                 SilvermoonStimmingUI.OnZoneEnter()
             else
-                if W_ticker then W_ticker:Cancel() ; W_ticker = nil end
+                inSilvermoon = false
+                StopTicker()
                 if state ~= "OFF_TRACK" then LeaveTrack() end
                 ResetRunState()
                 SilvermoonStimmingUI.OnZoneLeave()
             end
         end)
+    elseif event == "PLAYER_STARTED_MOVING"
+        or event == "PLAYER_MOUNT_DISPLAY_CHANGED" then
+        StartTicker()
+
+    elseif event == "PLAYER_STOPPED_MOVING" then
+        StopTicker()
+        -- Snap a final position check so a stopped-at-finish-line still counts
+        Tick()
     end
 end)
 
@@ -259,7 +279,7 @@ SlashCmdList["SILVERMOONST"] = function(msg)
         SilvermoonStimmingDB.totalLaps      = 0
         SilvermoonStimmingDB.sessionLaps    = 0
         SilvermoonStimmingDB.bestLapSeconds = nil
-        print("|cff00ff7fSilvermoonStimming:|r Reset.")
+        print(L["RESET_DONE"])
         SilvermoonStimmingUI.Init(SilvermoonStimmingDB)
 
     elseif cmd == "debug" then
@@ -271,26 +291,22 @@ SlashCmdList["SILVERMOONST"] = function(msg)
                 zone = InInnerEllipse(x, y) and "IN_CENTER" or "ON_TRACK"
             end
             local progress = (math.abs(accumulatedAngle) % TWO_PI) / TWO_PI * 100
-            print(string.format(
-                "|cff00ff7fDebug:|r pos=(%.4f,%.4f)  zone=%s  angle=%.1f  acc=%.1f  progress=%.0f%%  session=%d",
-                x, y, zone, math.deg(ang), math.deg(accumulatedAngle), progress, SilvermoonStimmingDB.sessionLaps
-            ))
+            print(string.format(L["DEBUG_LINE"], x, y, zone, math.deg(ang), math.deg(accumulatedAngle), progress, SilvermoonStimmingDB.sessionLaps))
         else
-            print("|cff00ff7fDebug:|r No position (wrong map).")
+            print(L["NO_POSITION"])
         end
 
     elseif cmd == "best" then
         if SilvermoonStimmingDB.bestLapSeconds then
-            print(string.format("|cff00ff7fSilvermoonStimming:|r Best: |cffffff00%.1fs|r  Total: %d",
-                SilvermoonStimmingDB.bestLapSeconds, SilvermoonStimmingDB.totalLaps))
+            print(string.format(L["BEST_LINE"], SilvermoonStimmingDB.bestLapSeconds, SilvermoonStimmingDB.totalLaps))
         else
-            print("|cff00ff7fSilvermoonStimming:|r No laps yet.")
+            print(L["NO_LAPS_YET"])
         end
 
     elseif cmd == "toggle" then
         SilvermoonStimmingUI.Toggle()
 
     else
-        print("|cff00ff7fSilvermoonStimming|r  /lt debug  /lt best  /lt reset  /lt toggle")
+        print(L["HELP_LINE"])
     end
 end
