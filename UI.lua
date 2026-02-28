@@ -29,7 +29,7 @@ local minimized   = false
 local manualShow  = false    -- true if user opened via /lt toggle while off-map
 
 local FULL_H = 148
-local MINI_H = 52
+local MINI_H = 62
 
 -- ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -174,10 +174,17 @@ local function Build()
 
     -- Mini session label (only visible when minimized)
     W.miniSession = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    W.miniSession:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -28)
+    W.miniSession:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -29)
     W.miniSession:SetText("0 laps")
     W.miniSession:SetTextColor(unpack(COL.green))
     W.miniSession:Hide()
+
+    -- Mini percent (right-aligned, same row as miniSession)
+    W.miniPct = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    W.miniPct:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -29)
+    W.miniPct:SetText("0%")
+    W.miniPct:SetTextColor(unpack(COL.dim))
+    W.miniPct:Hide()
 end
 
 -- ── Minimize / Maximize ───────────────────────────────────────────────────────
@@ -189,14 +196,16 @@ function UI.ToggleMinimize()
         W.frame:SetHeight(MINI_H)
         for _, w in ipairs(W.fullWidgets) do w:Hide() end
         W.miniSession:Show()
+        W.miniPct:Show()
         -- reanchor bar to fill mini frame
-        W.barBg:SetPoint("BOTTOMLEFT",  W.frame, "BOTTOMLEFT",  11, 8)
-        W.barBg:SetPoint("BOTTOMRIGHT", W.frame, "BOTTOMRIGHT", -11, 8)
+        W.barBg:SetPoint("BOTTOMLEFT",  W.frame, "BOTTOMLEFT",  11, 6)
+        W.barBg:SetPoint("BOTTOMRIGHT", W.frame, "BOTTOMRIGHT", -11, 6)
         W.minBtn:SetText("+")
     else
         W.frame:SetHeight(FULL_H)
         for _, w in ipairs(W.fullWidgets) do w:Show() end
         W.miniSession:Hide()
+        W.miniPct:Hide()
         W.barBg:SetPoint("BOTTOMLEFT",  W.frame, "BOTTOMLEFT",  11, 11)
         W.barBg:SetPoint("BOTTOMRIGHT", W.frame, "BOTTOMRIGHT", -11, 11)
         W.minBtn:SetText("—")
@@ -242,6 +251,7 @@ function UI.Refresh(db)
     local s = tostring(db.sessionLaps or 0)
     W.session:SetText(s)
     W.miniSession:SetText(s .. " laps")
+    if W.miniPct then W.miniPct:SetTextColor(unpack(COL.green)) end
     W.total:SetText("Total: " .. (db.totalLaps or 0))
     if db.bestLapSeconds then
         W.best:SetText(string.format("Best: %.1fs", db.bestLapSeconds))
@@ -274,19 +284,23 @@ function UI.OnTick(accumulatedAngle, direction)
     W.bar:SetWidth(math.max(1, bgW * fraction))
 
     local pct = math.floor(fraction * 100)
-    if W.pct then W.pct:SetText(pct .. "%") end
+    if W.pct     then W.pct:SetText(pct .. "%") end
+    if W.miniPct then W.miniPct:SetText(pct .. "%") end
 
     if direction == CFG.DIR_CW then
         if W.dir then W.dir:SetText("-> Clockwise")   ; W.dir:SetTextColor(unpack(COL.blue))   end
-        if W.pct then W.pct:SetTextColor(unpack(COL.blue))   end
+        if W.pct     then W.pct:SetTextColor(unpack(COL.blue))   end
+        if W.miniPct then W.miniPct:SetTextColor(unpack(COL.blue)) end
         SetCol(W.bar, COL.blue)
     elseif direction == CFG.DIR_CCW then
         if W.dir then W.dir:SetText("<- Counter-CW") ; W.dir:SetTextColor(unpack(COL.orange)) end
-        if W.pct then W.pct:SetTextColor(unpack(COL.orange)) end
+        if W.pct     then W.pct:SetTextColor(unpack(COL.orange)) end
+        if W.miniPct then W.miniPct:SetTextColor(unpack(COL.orange)) end
         SetCol(W.bar, COL.orange)
     else
         if W.dir then W.dir:SetText("Starting...")   ; W.dir:SetTextColor(unpack(COL.dim))    end
-        if W.pct then W.pct:SetTextColor(unpack(COL.dim))    end
+        if W.pct     then W.pct:SetTextColor(unpack(COL.dim))    end
+        if W.miniPct then W.miniPct:SetTextColor(unpack(COL.dim))    end
         SetCol(W.bar, COL.dim)
     end
 end
