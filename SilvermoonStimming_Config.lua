@@ -37,4 +37,15 @@ SilvermoonStimmingConfig = {
     DIR_NONE = 0,
     DIR_CW   = 1,
     DIR_CCW  = -1,
+
+    -- ── Custom location bounds presets ────────────────────────────────────
+    -- Each preset defines ±x (east/west) and ±y (north/south) offsets from
+    -- a user-defined center point in normalised map coordinates.
+    -- Inner ellipse radii are derived as 28% of the outer offset so the
+    -- dead-zone scales proportionally with the track size.
+    BOUNDS_PRESETS = {
+        small  = { x = 0.025, y = 0.035 },
+        medium = { x = 0.055, y = 0.075 },
+        large  = { x = 0.110, y = 0.150 },
+    },
 }

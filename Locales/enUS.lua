@@ -43,9 +43,9 @@ L["BEST_LINE"]           = "|cff00ff7fSilvermoonStimming:|r Best: |cffffff00%.1f
 
 -- ── HUD — title & buttons ─────────────────────────────────────────────────
 L["HUD_TITLE"]           = "|cffffd700Silvermoon|r |cffaaaaaa Stimming|r"
-L["BTN_MINIMIZE"]        = "—"
+L["BTN_MINIMIZE"]        = "-"
 L["BTN_RESTORE"]         = "+"
-L["BTN_CLOSE"]           = "×"
+L["BTN_CLOSE"]           = "x"
 
 -- ── HUD — labels ─────────────────────────────────────────────────────────
 L["LABEL_SESSION"]       = "SESSION"
@@ -61,3 +61,23 @@ L["STATE_IN_CENTER"]     = "In center"
 L["STATE_STARTING"]      = "Starting..."
 L["STATE_CW"]            = "-> Clockwise"
 L["STATE_CCW"]           = "<- Counter-CW"
+
+-- ── HUD — tabs ────────────────────────────────────────────────────────────
+L["TAB_SILVERMOON"]      = "Silvermoon"
+L["TAB_CUSTOM"]          = "Custom"
+
+-- ── Custom location panel ─────────────────────────────────────────────────
+L["CUSTOM_NO_SLOTS"]     = "No custom locations saved."
+L["CUSTOM_NO_CENTER"]    = "No location set."
+L["CUSTOM_SLOT_NAME"]    = "Custom %d"
+L["BTN_CAPTURE"]         = "Set Location"
+L["BTN_RECAPTURE"]       = "Recapture"
+L["BTN_ADD_SLOT"]        = "+"
+L["BTN_BOUNDS_SMALL"]    = "Small"
+L["BTN_BOUNDS_MEDIUM"]   = "Medium"
+L["BTN_BOUNDS_LARGE"]    = "Large"
+L["CUSTOM_CAPTURED"]     = "|cff00ff7fSilvermoonStimming:|r Location set — %s (%.4f, %.4f)"
+L["CUSTOM_MAX_SLOTS"]    = "|cffff4444SilvermoonStimming:|r Maximum 5 custom locations reached."
+L["CUSTOM_SLOT_LABEL"]   = "%s  |cff888888(%d/%d)|r"
+L["CUSTOM_RENAME_HINT"]  = "Click to rename  |cffff4444(type DELETE to remove)|r"
+L["CUSTOM_NO_POS"]       = "|cffff4444SilvermoonStimming:|r Cannot capture position — move to a valid map area first."
