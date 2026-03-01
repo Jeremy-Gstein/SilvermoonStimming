@@ -202,6 +202,9 @@ end
 local RefreshCustomPanel
 local RefreshBoundsButtons
 
+-- Populated once inside BuildCustomPanel; used by RefreshBoundsButtons.
+local BOUNDS_BTNS = {}
+
 local function BuildCustomPanel(f)
     WC.panel = CreateFrame("Frame", nil, f)
     WC.panel:SetPoint("TOPLEFT",     f, "TOPLEFT",  0, CONTENT_TOP)
@@ -237,11 +240,6 @@ local function BuildCustomPanel(f)
     WC.slotLabel:EnableMouse(true)
 
     WC.nextBtn = MakeButton(p, ">", 22, 18, 0.1, 0.1, 0.14)
-    WC.nextBtn:SetPoint("RIGHT", p, "RIGHT", -34, -4 - 9)  -- right of label area
-    WC.nextBtn:SetPoint("TOPLEFT", WC.prevBtn, "TOPRIGHT",
-        (FRAME_W - 22 - 60 - 4), 0)   -- recalc below
-    -- simpler: anchor by TOPRIGHT of panel minus add-button space
-    WC.nextBtn:ClearAllPoints()
     WC.nextBtn:SetPoint("TOPRIGHT", p, "TOPRIGHT", -34, -4)
     WC.nextBtn._label:SetTextColor(unpack(COL.dim))
     WC.nextBtn:SetScript("OnClick", function()
@@ -394,6 +392,11 @@ local function BuildCustomPanel(f)
     WC.boundsMedium:SetPoint("TOPLEFT",  WC.boundsSmall,  "TOPRIGHT", 2, 0)
     WC.boundsLarge:SetPoint( "TOPLEFT",  WC.boundsMedium, "TOPRIGHT", 2, 0)
 
+    -- Populate module-level ref so RefreshBoundsButtons needs no per-call allocation.
+    BOUNDS_BTNS.small  = WC.boundsSmall
+    BOUNDS_BTNS.medium = WC.boundsMedium
+    BOUNDS_BTNS.large  = WC.boundsLarge
+
     local function SetBoundsSize(size)
         local slots = SilvermoonStimmingDB.customLocations
         if #slots == 0 then return end
@@ -504,12 +507,7 @@ RefreshCustomPanel = function()
 end
 
 RefreshBoundsButtons = function(active)
-    local buttons = {
-        small  = WC.boundsSmall,
-        medium = WC.boundsMedium,
-        large  = WC.boundsLarge,
-    }
-    for size, btn in pairs(buttons) do
+    for size, btn in pairs(BOUNDS_BTNS) do
         if size == active then
             btn:SetBackdropColor(unpack(COL.btn_bounds_a))
             btn._label:SetTextColor(unpack(COL.blue))
@@ -524,20 +522,18 @@ end
 
 function UI.SwitchTab(tab)
     activeTab = tab
-    SilvermoonStimmingDB.activeTab = tab   -- persist across reloads
+    SilvermoonStimmingDB.activeTab = tab
     RefreshTabAppearance()
+    if not minimized then W.frame:SetHeight(FULL_H) end
 
     if tab == "silvermoon" then
         W.smPanel:Show()
         WC.panel:Hide()
-        if not minimized then W.frame:SetHeight(FULL_H) end
         SilvermoonStimmingCore.SetProfile("silvermoon")
         UI.Refresh(SilvermoonStimmingDB)
     else
         W.smPanel:Hide()
         WC.panel:Show()
-        if not minimized then W.frame:SetHeight(FULL_H) end
-        -- Restore last selected slot
         local slots = SilvermoonStimmingDB.customLocations
         currentSlot = SilvermoonStimmingDB.activeCustomSlot or 1
         if currentSlot > #slots then currentSlot = math.max(1, #slots) end
@@ -621,6 +617,7 @@ end
 -- Applies the current value of `minimized` to all frame elements.
 -- Call any time the frame is about to be shown to guarantee consistency.
 local function ApplyMinimizedState()
+    if not W.frame or not W.barBg then return end
     if minimized then
         W.frame:SetHeight(MINI_H)
         W.smPanel:Hide()
@@ -673,21 +670,20 @@ end
 
 function UI.Init(db)
     if not W.frame then Build() end
-    -- Restore last active tab from saved variables
     activeTab   = db.activeTab or "silvermoon"
     currentSlot = db.activeCustomSlot or 1
-    RefreshTabAppearance()
     UI.Refresh(db)
-    -- Tell Core which profile to use so IsInActiveZone() is correct from the start.
-    -- This must happen before the first zone event fires after ADDON_LOADED.
+    -- Restore Core profile so IsInActiveZone() is correct before the first zone event.
     if activeTab == "custom" and currentSlot <= #db.customLocations
     and db.customLocations[currentSlot].center then
         SilvermoonStimmingCore.SetProfile("custom", currentSlot)
         RefreshCustomPanel()
     else
-        activeTab = "silvermoon"   -- fall back gracefully if slot is empty/gone
+        activeTab = "silvermoon"   -- fall back if slot is empty or gone
         SilvermoonStimmingCore.SetProfile("silvermoon")
     end
+    -- Refresh tab appearance AFTER any fallback so highlight always matches reality.
+    RefreshTabAppearance()
     W.frame:Hide()
 end
 
@@ -735,32 +731,34 @@ end
 function UI.OnTick(accumulatedAngle, direction)
     if not W.bar or not W.barBg then return end
 
-    local CFG      = SilvermoonStimmingConfig
     local fraction = (math.abs(accumulatedAngle) % TWO_PI) / TWO_PI
     local bgW      = W.barBg:GetWidth()
     W.bar:SetWidth(math.max(1, bgW * fraction))
 
     local pct  = math.floor(fraction * 100)
-    local dirW = (activeTab == "silvermoon") and W.dir   or WC.dir
-    local pctW = (activeTab == "silvermoon") and W.pct   or WC.pct
+    local isSM = activeTab == "silvermoon"
+    local dirW = isSM and W.dir   or WC.dir
+    local pctW = isSM and W.pct   or WC.pct
 
-    if W.pct     then W.pct:SetText(pct .. "%")     end   -- update both panels
-    if WC.pct    then WC.pct:SetText(pct .. "%")    end
+    -- Only update the visible tab's pct label; the hidden one stays
+    -- stale until the next tab switch which calls Refresh/RefreshCustomPanel.
+    if pctW    then pctW:SetText(pct .. "%") end
     if W.miniPct then W.miniPct:SetText(pct .. "%") end
 
-    if direction == CFG.DIR_CW then
-        if dirW then dirW:SetText(L["STATE_CW"]) ; dirW:SetTextColor(unpack(COL.blue)) end
-        if pctW then pctW:SetTextColor(unpack(COL.blue)) end
+    -- direction is always 1 (CW), -1 (CCW), or 0 (none) — compare directly.
+    if direction > 0 then
+        if dirW then dirW:SetText(L["STATE_CW"])      ; dirW:SetTextColor(unpack(COL.blue))   end
+        if pctW then pctW:SetTextColor(unpack(COL.blue))   end
         if W.miniPct then W.miniPct:SetTextColor(unpack(COL.blue)) end
         SetCol(W.bar, COL.blue)
-    elseif direction == CFG.DIR_CCW then
-        if dirW then dirW:SetText(L["STATE_CCW"]) ; dirW:SetTextColor(unpack(COL.orange)) end
+    elseif direction < 0 then
+        if dirW then dirW:SetText(L["STATE_CCW"])     ; dirW:SetTextColor(unpack(COL.orange)) end
         if pctW then pctW:SetTextColor(unpack(COL.orange)) end
         if W.miniPct then W.miniPct:SetTextColor(unpack(COL.orange)) end
         SetCol(W.bar, COL.orange)
     else
-        if dirW then dirW:SetText(L["STATE_STARTING"]) ; dirW:SetTextColor(unpack(COL.dim)) end
-        if pctW then pctW:SetTextColor(unpack(COL.dim)) end
+        if dirW then dirW:SetText(L["STATE_STARTING"]) ; dirW:SetTextColor(unpack(COL.dim))   end
+        if pctW then pctW:SetTextColor(unpack(COL.dim))   end
         if W.miniPct then W.miniPct:SetTextColor(unpack(COL.dim)) end
         SetCol(W.bar, COL.dim)
     end

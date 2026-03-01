@@ -60,6 +60,11 @@ local function StopTicker()
     if W_ticker then W_ticker:Cancel() ; W_ticker = nil end
 end
 
+-- Zone-change events can fire in pairs (ZONE_CHANGED + ZONE_CHANGED_NEW_AREA).
+-- This timer ref lets us cancel the first before the second fires, so the
+-- zone check only runs once per actual transition.
+local zoneCheckTimer = nil
+
 local state            = "OFF_TRACK"
 local previousAngle    = nil
 local accumulatedAngle = 0
@@ -277,8 +282,9 @@ function SilvermoonStimmingCore.SetProfile(mode, slotIndex)
     else
         local slot = SilvermoonStimmingDB.customLocations[slotIndex]
         if not slot or not slot.center then
-            -- No valid center yet; park in a neutral state
-            activeCFG    = CFG_SILVERMOON
+            -- No center captured yet — use a sentinel config with no valid MAP_ID
+            -- so IsInActiveZone() always returns false and the HUD stays hidden.
+            activeCFG    = { MAP_ID = nil, POLL_RATE = CFG_SILVERMOON.POLL_RATE }
             activeDB     = slot or SilvermoonStimmingDB
             inActiveZone = false
             SilvermoonStimmingUI.OnStateChange("OFF_TRACK")
@@ -349,7 +355,6 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             slot.sessionLaps = 0
         end
 
-        activeDB = SilvermoonStimmingDB
         SilvermoonStimmingUI.Init(SilvermoonStimmingDB)
         print(L["LOADED"])
 
@@ -357,7 +362,10 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         or event == "ZONE_CHANGED"
         or event == "PLAYER_ENTERING_WORLD"
     then
-        C_Timer.After(1.0, function()
+        -- Cancel any pending check so paired events don't run the logic twice.
+        if zoneCheckTimer then zoneCheckTimer:Cancel() end
+        zoneCheckTimer = C_Timer.NewTimer(1.0, function()
+            zoneCheckTimer = nil
             if IsInActiveZone() then
                 inActiveZone = true
                 SilvermoonStimmingUI.OnZoneEnter()
