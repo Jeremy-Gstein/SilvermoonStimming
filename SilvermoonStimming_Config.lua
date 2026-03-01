@@ -31,7 +31,7 @@ SilvermoonStimmingConfig = {
     -- ── Behaviour ─────────────────────────────────────────────────────────
     POLL_RATE          = 0.25,
     TELEPORT_THRESHOLD = math.pi / 2,  -- delta > 90 deg = discard
-    MIN_LAP_SECONDS    = 10,
+    MIN_LAP_SECONDS    = 1,
 
     -- Direction enum (do not change values)
     DIR_NONE = 0,

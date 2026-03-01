@@ -29,9 +29,10 @@ local L              = SilvermoonStimmingL
 local TWO_PI         = math.pi * 2
 
 -- Active-profile pointers (switched by SetProfile)
-local activeCFG  = CFG_SILVERMOON
-local activeDB   = nil              -- set once DB loads in ADDON_LOADED
-local activeMode = "silvermoon"     -- "silvermoon" | "custom"
+local activeCFG       = CFG_SILVERMOON
+local activeDB        = nil              -- set once DB loads in ADDON_LOADED
+local activeMode      = "silvermoon"     -- "silvermoon" | "custom"
+local activeSlotIndex = nil              -- index into customLocations, or nil for silvermoon
 
 -- Saved-variable defaults (Silvermoon tab)
 local DB_DEFAULTS = {
@@ -64,6 +65,12 @@ end
 -- This timer ref lets us cancel the first before the second fires, so the
 -- zone check only runs once per actual transition.
 local zoneCheckTimer = nil
+
+-- True once PLAYER_ENTERING_WORLD has fired for this session.
+-- The map API (C_Map.GetPlayerMapPosition etc.) is not reliable until then,
+-- so SetProfile skips its zone check during ADDON_LOADED and lets the
+-- PLAYER_ENTERING_WORLD handler do it once the world is fully loaded.
+local worldEntered     = false
 
 local state            = "OFF_TRACK"
 local previousAngle    = nil
@@ -112,15 +119,60 @@ end
 
 local SILVERMOON_MAPS = { [2393] = true }
 
-local function IsInActiveZone()
-    local mapID = C_Map.GetBestMapForUnit("player")
-    if activeMode == "silvermoon" then
-        if SILVERMOON_MAPS[mapID] then return true end
-        local zone = GetZoneText()
-        return zone and zone:find("Silvermoon") ~= nil
-    else
-        return activeCFG.MAP_ID ~= nil and mapID == activeCFG.MAP_ID
+-- Returns true if mapID matches targetMapID, accounting for the fact that
+-- GetBestMapForUnit can return a child/subzone map instead of the exact captured ID.
+local function MapMatches(mapID, targetMapID)
+    if mapID == targetMapID then return true end
+    local checkID = mapID
+    for _ = 1, 6 do
+        local info = C_Map.GetMapInfo(checkID)
+        if not info or not info.parentMapID then break end
+        if info.parentMapID == targetMapID then return true end
+        checkID = info.parentMapID
     end
+    return false
+end
+
+-- Check whether the player is in a zone that any profile cares about,
+-- and auto-switch to the matching slot if needed.
+-- This is the fix for the core bug: previously only the active slot was checked,
+-- so entering a zone that matched a different slot did nothing.
+local function CheckAndSwitchZone()
+    local mapID = C_Map.GetBestMapForUnit("player")
+
+    -- If the current active profile already matches this zone, respect it —
+    -- the user may have manually chosen it. Don't auto-switch away from it.
+    if activeMode == "silvermoon" then
+        local inSilvermoon = SILVERMOON_MAPS[mapID]
+            or (GetZoneText() or ""):find("Silvermoon") ~= nil
+        if inSilvermoon then return true end
+    elseif activeMode == "custom" and activeCFG.MAP_ID and MapMatches(mapID, activeCFG.MAP_ID) then
+        return true
+    end
+
+    -- Current profile doesn't match — scan custom slots for one that does.
+    -- Skip the currently active slot (already checked above) so a user who
+    -- manually selected a slot in this zone is never bounced back to slot 1.
+    local slots = SilvermoonStimmingDB and SilvermoonStimmingDB.customLocations or {}
+    for i, slot in ipairs(slots) do
+        if i ~= activeSlotIndex and slot.mapID and MapMatches(mapID, slot.mapID) then
+            SilvermoonStimmingDB.activeCustomSlot = i
+            SilvermoonStimmingCore.SetProfile("custom", i)
+            SilvermoonStimmingUI.SwitchTab("custom")
+            return true
+        end
+    end
+
+    -- No custom slot matched — fall back to built-in Silvermoon profile.
+    local inSilvermoon = SILVERMOON_MAPS[mapID]
+        or (GetZoneText() or ""):find("Silvermoon") ~= nil
+    if inSilvermoon then
+        SilvermoonStimmingCore.SetProfile("silvermoon")
+        SilvermoonStimmingUI.SwitchTab("silvermoon")
+        return true
+    end
+
+    return false
 end
 
 -- ── Geometry ──────────────────────────────────────────────────────────────────
@@ -275,6 +327,7 @@ function SilvermoonStimmingCore.SetProfile(mode, slotIndex)
     lapStartTime     = nil
     previousAngle    = nil
     activeMode       = mode
+    activeSlotIndex  = (mode == "custom") and slotIndex or nil
 
     if mode == "silvermoon" then
         activeCFG = CFG_SILVERMOON
@@ -282,8 +335,6 @@ function SilvermoonStimmingCore.SetProfile(mode, slotIndex)
     else
         local slot = SilvermoonStimmingDB.customLocations[slotIndex]
         if not slot or not slot.center then
-            -- No center captured yet — use a sentinel config with no valid MAP_ID
-            -- so IsInActiveZone() always returns false and the HUD stays hidden.
             activeCFG    = { MAP_ID = nil, POLL_RATE = CFG_SILVERMOON.POLL_RATE }
             activeDB     = slot or SilvermoonStimmingDB
             inActiveZone = false
@@ -297,9 +348,39 @@ function SilvermoonStimmingCore.SetProfile(mode, slotIndex)
     direction = activeCFG.DIR_NONE
     SilvermoonStimmingUI.OnStateChange("OFF_TRACK")
 
-    -- Re-evaluate zone after a short delay so map data is current
-    C_Timer.After(0.05, function()
-        inActiveZone = IsInActiveZone()
+    -- If the world isn't loaded yet (i.e. we're still in ADDON_LOADED),
+    -- the map API isn't stable. Skip the zone check here — PLAYER_ENTERING_WORLD
+    -- will fire shortly and its zone timer will show the UI correctly.
+    --
+    -- If the world IS already loaded (user captured a point mid-session or
+    -- switched tabs), cancel any stale zone timer and immediately re-evaluate
+    -- so the window appears without waiting for a zone-change event.
+    if not worldEntered then return end
+
+    -- Only show/hide the UI based on whether the just-selected profile matches
+    -- the current zone. Do NOT call CheckAndSwitchZone here — that would scan
+    -- all other slots and switch away from the profile the user just picked.
+    -- Do NOT call OnZoneLeave here either — if the user manually picked this
+    -- profile the window should stay open regardless of zone match.
+    if zoneCheckTimer then zoneCheckTimer:Cancel() ; zoneCheckTimer = nil end
+    C_Timer.After(0.1, function()
+        local mapID = C_Map.GetBestMapForUnit("player")
+        local inZone
+        if mode == "silvermoon" then
+            inZone = SILVERMOON_MAPS[mapID]
+                or (GetZoneText() or ""):find("Silvermoon") ~= nil
+        else
+            inZone = activeCFG.MAP_ID ~= nil and MapMatches(mapID, activeCFG.MAP_ID)
+        end
+        if inZone then
+            inActiveZone = true
+            SilvermoonStimmingUI.OnZoneEnter()
+        else
+            inActiveZone = false
+            -- Don't call OnZoneLeave — the user manually selected this profile.
+            -- The window stays visible; tracking just won't start until they
+            -- physically enter this profile's zone.
+        end
     end)
 end
 
@@ -362,11 +443,19 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         or event == "ZONE_CHANGED"
         or event == "PLAYER_ENTERING_WORLD"
     then
+        if event == "PLAYER_ENTERING_WORLD" then
+            worldEntered = true
+        end
         -- Cancel any pending check so paired events don't run the logic twice.
         if zoneCheckTimer then zoneCheckTimer:Cancel() end
-        zoneCheckTimer = C_Timer.NewTimer(1.0, function()
+        -- Use a longer delay for PLAYER_ENTERING_WORLD: the map hierarchy
+        -- (GetBestMapForUnit / GetMapInfo) isn't fully resolved until a second
+        -- or two after the loading screen clears, so checking too early returns
+        -- a stale/wrong map ID and incorrectly calls OnZoneLeave.
+        local delay = (event == "PLAYER_ENTERING_WORLD") and 2.0 or 1.0
+        zoneCheckTimer = C_Timer.NewTimer(delay, function()
             zoneCheckTimer = nil
-            if IsInActiveZone() then
+            if CheckAndSwitchZone() then
                 inActiveZone = true
                 SilvermoonStimmingUI.OnZoneEnter()
             else
