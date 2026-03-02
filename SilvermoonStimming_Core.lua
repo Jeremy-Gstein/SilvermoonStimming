@@ -79,6 +79,14 @@ local completedLaps    = 0
 local lapStartTime     = nil
 local direction        = CFG_SILVERMOON.DIR_NONE
 
+-- Direction-reversal buffer: we require the opposite direction to be sustained
+-- for DIR_REVERSAL_BUFFER seconds before wiping progress and committing to the
+-- new direction.  This prevents a quick spin-around (vendor chat, camera adjust)
+-- from nuking an in-progress lap.
+local DIR_REVERSAL_BUFFER  = 2.0   -- seconds
+local pendingReverseDir    = nil   -- direction we *might* switch to
+local pendingReverseStart  = nil   -- GetTime() when reversal was first noticed
+
 -- ── Custom config builder ─────────────────────────────────────────────────────
 
 local function BuildCustomConfig(slot)
@@ -199,11 +207,13 @@ end
 -- ── State transitions ─────────────────────────────────────────────────────────
 
 local function ResetRunState()
-    accumulatedAngle = 0
-    completedLaps    = 0
-    lapStartTime     = GetTime()
-    previousAngle    = nil
-    direction        = activeCFG.DIR_NONE
+    accumulatedAngle  = 0
+    completedLaps     = 0
+    lapStartTime      = GetTime()
+    previousAngle     = nil
+    direction         = activeCFG.DIR_NONE
+    pendingReverseDir   = nil
+    pendingReverseStart = nil
 end
 
 local function EnterTrack(x, y)
@@ -298,13 +308,31 @@ Tick = function()
                 or direction
 
     if newDir ~= activeCFG.DIR_NONE and newDir ~= direction and direction ~= activeCFG.DIR_NONE then
-        print(L["DIR_REVERSED"])
-        ResetRunState()
+        -- Player appears to have reversed — start (or continue) the buffer window.
+        if pendingReverseDir ~= newDir then
+            -- Fresh reversal detected; begin the countdown.
+            pendingReverseDir   = newDir
+            pendingReverseStart = GetTime()
+        elseif (GetTime() - pendingReverseStart) >= DIR_REVERSAL_BUFFER then
+            -- Reversal has been sustained long enough — commit to the new direction.
+            print(L["DIR_REVERSED"])
+            ResetRunState()
+            previousAngle = current
+            direction     = newDir
+            SilvermoonStimmingUI.OnTick(0, direction)
+            return
+        end
+        -- Still within the buffer window: keep the previous angle updated so
+        -- we don't snap weirdly if the player returns to the original direction,
+        -- but don't accumulate progress in either direction yet.
         previousAngle = current
-        direction     = newDir
-        SilvermoonStimmingUI.OnTick(0, direction)
         return
     end
+
+    -- Player is moving in the established (or newly set) direction —
+    -- cancel any pending reversal and continue accumulating normally.
+    pendingReverseDir   = nil
+    pendingReverseStart = nil
 
     direction        = newDir
     accumulatedAngle = accumulatedAngle + delta
