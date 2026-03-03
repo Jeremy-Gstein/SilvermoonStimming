@@ -130,6 +130,7 @@ local SILVERMOON_MAPS = { [2393] = true }
 -- Returns true if mapID matches targetMapID, accounting for the fact that
 -- GetBestMapForUnit can return a child/subzone map instead of the exact captured ID.
 local function MapMatches(mapID, targetMapID)
+    if not mapID or not targetMapID then return false end
     if mapID == targetMapID then return true end
     local checkID = mapID
     for _ = 1, 6 do
@@ -147,6 +148,7 @@ end
 -- so entering a zone that matched a different slot did nothing.
 local function CheckAndSwitchZone()
     local mapID = C_Map.GetBestMapForUnit("player")
+    if not mapID then return false end  -- No valid map yet (e.g. entering a battleground)
 
     -- If the current active profile already matches this zone, respect it —
     -- the user may have manually chosen it. Don't auto-switch away from it.
