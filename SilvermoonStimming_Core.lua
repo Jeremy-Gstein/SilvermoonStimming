@@ -51,8 +51,15 @@ local W_ticker         = nil
 local inActiveZone     = false
 local Tick             -- forward declaration
 
+local function IsTrackingBlocked()
+    if InCombatLockdown() then return true end
+    local _, instanceType = IsInInstance()
+    return instanceType ~= nil and instanceType ~= "none"
+end
+
 local function StartTicker()
     if inActiveZone and not W_ticker then
+        if IsTrackingBlocked() then return end
         W_ticker = C_Timer.NewTicker(activeCFG.POLL_RATE, Tick)
     end
 end
@@ -452,6 +459,8 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("PLAYER_STARTED_MOVING")
 frame:RegisterEvent("PLAYER_STOPPED_MOVING")
 frame:RegisterEvent("PLAYER_MOUNT_DISPLAY_CHANGED")
+frame:RegisterEvent("PLAYER_REGEN_DISABLED")   -- entered combat
+frame:RegisterEvent("PLAYER_REGEN_ENABLED")    -- left combat
 
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == "SilvermoonStimming" then
@@ -504,6 +513,19 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "PLAYER_STOPPED_MOVING" then
         StopTicker()
         Tick()
+
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        -- Entered combat: immediately stop tracking and hide the UI.
+        StopTicker()
+        if state ~= "OFF_TRACK" then LeaveTrack() end
+        ResetRunState()
+        SilvermoonStimmingUI.OnZoneLeave()
+
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        -- Left combat: resume only if still in a valid zone and not in an instance.
+        if inActiveZone and not IsTrackingBlocked() then
+            SilvermoonStimmingUI.OnZoneEnter()
+        end
     end
 end)
 
