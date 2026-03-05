@@ -46,6 +46,11 @@ local DB_DEFAULTS = {
 
 SilvermoonStimmingCore = {}
 
+-- Use floating screen text instead of chat output.
+local function Notify(msg)
+    UIErrorsFrame:AddMessage(msg, 1, 0.82, 0)
+end
+
 -- Runtime state
 local W_ticker         = nil
 local inActiveZone     = false
@@ -230,7 +235,7 @@ local function EnterTrack(x, y)
     previousAngle = math.atan2(y - activeCFG.CENTER.y, x - activeCFG.CENTER.x)
     if lapStartTime == nil then lapStartTime = GetTime() end
     SilvermoonStimmingUI.OnStateChange(state)
-    print(L["ON_TRACK"])
+    Notify(L["ON_TRACK"])
 end
 
 local function EnterCenter()
@@ -242,7 +247,7 @@ end
 local function LeaveTrack()
     state = "OFF_TRACK"
     SilvermoonStimmingUI.OnStateChange(state)
-    print(L["LEFT_TRACK"])
+    Notify(L["LEFT_TRACK"])
 end
 
 -- ── Lap counting ──────────────────────────────────────────────────────────────
@@ -253,7 +258,7 @@ local function CheckLap()
 
     local elapsed = lapStartTime and (GetTime() - lapStartTime) or 999
     if elapsed < activeCFG.MIN_LAP_SECONDS then
-        print(string.format(L["LAP_TOO_FAST"], elapsed))
+        Notify(string.format(L["LAP_TOO_FAST"], elapsed))
         ResetRunState()
         return
     end
@@ -268,7 +273,7 @@ local function CheckLap()
     end
 
     local dirLabel = (direction == activeCFG.DIR_CW) and L["DIR_CW"] or L["DIR_CCW"]
-    print(string.format(L["LAP_COMPLETE"], activeDB.totalLaps, dirLabel, elapsed))
+    Notify(string.format(L["LAP_COMPLETE"], activeDB.totalLaps, dirLabel, elapsed))
 
     lapStartTime = GetTime()
     SilvermoonStimmingUI.OnLapComplete(activeDB)
@@ -324,7 +329,7 @@ Tick = function()
             pendingReverseStart = GetTime()
         elseif (GetTime() - pendingReverseStart) >= DIR_REVERSAL_BUFFER then
             -- Reversal has been sustained long enough — commit to the new direction.
-            print(L["DIR_REVERSED"])
+            Notify(L["DIR_REVERSED"])
             ResetRunState()
             previousAngle = current
             direction     = newDir
@@ -476,7 +481,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
 
         SilvermoonStimmingUI.Init(SilvermoonStimmingDB)
-        print(L["LOADED"])
+        Notify(L["LOADED"])
 
     elseif event == "ZONE_CHANGED_NEW_AREA"
         or event == "ZONE_CHANGED"
@@ -542,7 +547,7 @@ SlashCmdList["SILVERMOONST"] = function(msg)
         activeDB.totalLaps      = 0
         activeDB.sessionLaps    = 0
         activeDB.bestLapSeconds = nil
-        print(L["RESET_DONE"])
+        Notify(L["RESET_DONE"])
         SilvermoonStimmingUI.OnLapComplete(activeDB)
 
     elseif cmd == "debug" then
@@ -554,23 +559,23 @@ SlashCmdList["SILVERMOONST"] = function(msg)
                 zone = InInnerEllipse(x, y) and "IN_CENTER" or "ON_TRACK"
             end
             local progress = (math.abs(accumulatedAngle) % TWO_PI) / TWO_PI * 100
-            print(string.format(L["DEBUG_LINE"], x, y, zone, math.deg(ang),
+            Notify(string.format(L["DEBUG_LINE"], x, y, zone, math.deg(ang),
                 math.deg(accumulatedAngle), progress, activeDB.sessionLaps))
         else
-            print(L["NO_POSITION"])
+            Notify(L["NO_POSITION"])
         end
 
     elseif cmd == "best" then
         if activeDB.bestLapSeconds then
-            print(string.format(L["BEST_LINE"], activeDB.bestLapSeconds, activeDB.totalLaps))
+            Notify(string.format(L["BEST_LINE"], activeDB.bestLapSeconds, activeDB.totalLaps))
         else
-            print(L["NO_LAPS_YET"])
+            Notify(L["NO_LAPS_YET"])
         end
 
     elseif cmd == "toggle" then
         SilvermoonStimmingUI.Toggle()
 
     else
-        print(L["HELP_LINE"])
+        Notify(L["HELP_LINE"])
     end
 end

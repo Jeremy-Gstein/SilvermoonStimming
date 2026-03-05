@@ -8,6 +8,10 @@ local L  = SilvermoonStimmingL
 
 local TWO_PI = math.pi * 2
 
+local function Notify(msg)
+    UIErrorsFrame:AddMessage(msg, 1, 0.82, 0)
+end
+
 -- ── Palette ───────────────────────────────────────────────────────────────────
 
 local COL = {
@@ -259,7 +263,7 @@ local function BuildCustomPanel(f)
     WC.addBtn:SetScript("OnClick", function()
         local slots = SilvermoonStimmingDB.customLocations
         if #slots >= 5 then
-            print(L["CUSTOM_MAX_SLOTS"])
+            Notify(L["CUSTOM_MAX_SLOTS"])
             return
         end
         local newSlot = {
@@ -366,7 +370,7 @@ local function BuildCustomPanel(f)
         if #slots == 0 then return end
         local mapID, x, y = SilvermoonStimmingCore.CaptureCurrentPosition()
         if not mapID then
-            print(L["CUSTOM_NO_POS"])
+            Notify(L["CUSTOM_NO_POS"])
             return
         end
         local slot = slots[currentSlot]
@@ -377,7 +381,7 @@ local function BuildCustomPanel(f)
         if zoneName and zoneName ~= "" then
             slot.name = zoneName
         end
-        print(string.format(L["CUSTOM_CAPTURED"], slot.name, x, y))
+        Notify(string.format(L["CUSTOM_CAPTURED"], slot.name, x, y))
         RefreshCustomPanel()
         SilvermoonStimmingCore.SetProfile("custom", currentSlot)
     end)
