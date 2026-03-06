@@ -56,10 +56,24 @@ local W_ticker         = nil
 local inActiveZone     = false
 local Tick             -- forward declaration
 
+-- Instance types that should suppress tracking and the UI.
+-- "scenario" is intentionally excluded so player housing and other
+-- non-combat scenario zones work with custom locations.
+local COMBAT_INSTANCE_TYPES = {
+    party = true,   -- dungeons
+    raid  = true,   -- raids
+    pvp   = true,   -- battlegrounds
+    arena = true,   -- arenas
+}
+
+local function IsCombatInstance()
+    local _, instanceType = IsInInstance()
+    return instanceType ~= nil and COMBAT_INSTANCE_TYPES[instanceType] == true
+end
+
 local function IsTrackingBlocked()
     if InCombatLockdown() then return true end
-    local _, instanceType = IsInInstance()
-    return instanceType ~= nil and instanceType ~= "none"
+    return IsCombatInstance()
 end
 
 local function StartTicker()
@@ -406,6 +420,12 @@ function SilvermoonStimmingCore.SetProfile(mode, slotIndex)
     -- profile the window should stay open regardless of zone match.
     if zoneCheckTimer then zoneCheckTimer:Cancel() ; zoneCheckTimer = nil end
     C_Timer.After(0.1, function()
+        -- Don't show the UI if we're inside a combat instance.
+        if IsCombatInstance() then
+            inActiveZone = false
+            SilvermoonStimmingUI.OnInstanceEnter()
+            return
+        end
         local mapID = C_Map.GetBestMapForUnit("player")
         local inZone
         if mode == "silvermoon" then
@@ -499,6 +519,17 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         local delay = (event == "PLAYER_ENTERING_WORLD") and 2.0 or 1.0
         zoneCheckTimer = C_Timer.NewTimer(delay, function()
             zoneCheckTimer = nil
+            -- Hide and stop inside combat instances (dungeon, raid, arena,
+            -- battleground).  Scenarios (e.g. player housing) are excluded so
+            -- custom locations in those zones continue to work normally.
+            if IsCombatInstance() then
+                inActiveZone = false
+                StopTicker()
+                if state ~= "OFF_TRACK" then LeaveTrack() end
+                ResetRunState()
+                SilvermoonStimmingUI.OnInstanceEnter()
+                return
+            end
             if CheckAndSwitchZone() then
                 inActiveZone = true
                 SilvermoonStimmingUI.OnZoneEnter()

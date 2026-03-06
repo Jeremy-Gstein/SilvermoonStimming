@@ -670,6 +670,15 @@ function UI.OnZoneLeave()
     if W.frame and not manualShow then W.frame:Hide() end
 end
 
+-- Called when the player enters any instanced content (dungeon, raid, arena,
+-- battleground, scenario).  Unlike OnZoneLeave this always hides the frame and
+-- clears manualShow so the UI doesn't bleed into instances.
+function UI.OnInstanceEnter()
+    if not W.frame then return end
+    manualShow = false
+    W.frame:Hide()
+end
+
 -- ── Public callbacks ──────────────────────────────────────────────────────────
 
 function UI.Init(db)
