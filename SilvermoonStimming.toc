@@ -1,4 +1,4 @@
-## Interface: 120000, 120001
+## Interface: 120000, 120001, 120005
 ## Title: SilvermoonStimming
 ## Notes: Track laps around Sanctum of Light in Silvermoon (or optionally set your own point to lap around!).
 ## Author: Jeremy-Gstein
